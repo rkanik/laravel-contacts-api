@@ -43,11 +43,16 @@ Route::group(['prefix' => 'v1'], function () {
             Route::group(['prefix' => '/contacts'], function () {
                 Route::get('/', [ContactsController::class, 'index']);
                 Route::post('/', [ContactsController::class, 'insert']);
+
+                Route::get('/trashed', [ContactsController::class, 'getTrashed']);
                 Route::post('/import', [ContactsController::class, 'import']);
+                Route::post('/trash', [ContactsController::class, 'moveToTrash']);
+                Route::post('/restore', [ContactsController::class, 'restoreFromTrash']);
+                Route::post('/delete', [ContactsController::class, 'deletePermanently']);
 
                 Route::get('/{contact_id}', [ContactsController::class, 'select']);
                 Route::put('/{contact_id}', [ContactsController::class, 'update']);
-                Route::delete('/{contact_id}', [ContactsController::class, 'destroy']);
+                // Route::delete('/{contact_id}', [ContactsController::class, 'trash']);
             });
         });
 

@@ -15,7 +15,9 @@ class CreateContactsTable extends Migration
     {
         Schema::create('contacts', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->references('id')->on('users');
+
+            $table->integer('user_id')->unsigned();
+            $table->foreign('user_id')->references('id')->on('users');
 
             $table->string('avatar')->nullable();
             $table->string('first_name');
@@ -28,11 +30,14 @@ class CreateContactsTable extends Migration
             $table->text('note')->nullable();
 
             $table->timestamps();
+            $table->softDeletes();
         });
 
         Schema::create('phone_numbers', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('contact_id')->references('id')->on('contacts')->cascadeOnDelete();
+
+            $table->integer('contact_id')->unsigned();
+            $table->foreign('contact_id')->references('id')->on('contacts')->onDelete('cascade');
 
             $table->string('phone_number');
             $table->string('country_code')->nullable();
@@ -43,7 +48,9 @@ class CreateContactsTable extends Migration
 
         Schema::create('emails', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('contact_id')->references('id')->on('contacts')->cascadeOnDelete();
+
+            $table->integer('contact_id')->unsigned();
+            $table->foreign('contact_id')->references('id')->on('contacts')->onDelete('cascade');
 
             $table->string('email');
             $table->string('label')->nullable();

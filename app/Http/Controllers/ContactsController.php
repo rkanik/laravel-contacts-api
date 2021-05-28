@@ -14,6 +14,119 @@ use Illuminate\Support\Facades\Validator;
 class ContactsController extends Controller
 {
 
+    private function importVCF($file_path, $user_id)
+    {
+
+        // return getContactsFromVCF($file_path);
+        $vcards = getContactsFromVCF($file_path);
+
+        foreach ($vcards as $vcard) {
+
+            if (empty($vcard->fn)) {
+                continue;
+            }
+
+            $name = explode(" ", $vcard->fn);
+            $contact = new Contact([
+                'first_name' => $name[0],
+                'last_name' => join(' ', array_slice($name, 1)),
+            ]);
+
+            if (!empty($vcard->photo)) {
+                $contact->avatar = $vcard->photo;
+            }
+
+            if (!empty($vcard->note)) {
+                $contact->note = $vcard->note;
+            }
+
+            $contact->user_id = $user_id;
+            $contact->save();
+
+            if (isset($vcard->phone_numbers)) {
+                $phone_numbers = array_map(
+                    function ($number) {
+                        return new PhoneNumber($number);
+                    },
+                    $vcard->phone_numbers
+                );
+                $contact->phone_numbers()->saveMany($phone_numbers);
+            }
+
+            if (isset($vcard->emails)) {
+                $emails = array_map(
+                    function ($email) {
+                        return new Email($email);
+                    },
+                    $vcard->emails
+                );
+                $contact->emails()->saveMany($emails);
+            }
+        }
+
+    }
+
+    private function importCSV($file_path, $user_id)
+    {
+        $csv_array = csv_to_array($file_path);
+        foreach ($csv_array as $csv_contact) {
+            $name = explode(" ", $csv_contact['Name']);
+            $contact = new Contact([
+                'first_name' => $name[0],
+                'last_name' => join(' ', array_slice($name, 1)),
+            ]);
+
+            if (!empty($csv_contact['Photo'])) {
+                $contact->avatar = $csv_contact['Photo'];
+            }
+
+            if (!empty($csv_contact['Notes'])) {
+                $contact->note = $csv_contact['Notes'];
+            }
+
+            if (!empty($csv_contact['Occupation'])) {
+                $contact->job_title = $csv_contact['Occupation'];
+            }
+
+            $contact->user_id = $user_id;
+            $contact->save();
+
+            $phone_numbers = [];
+            foreach (range(1, 5) as $i) {
+                if (!empty($csv_contact['Phone ' . $i . ' - Value'])) {
+                    $m_numbers = explode(':::', $csv_contact['Phone ' . $i . ' - Value']);
+                    foreach ($m_numbers as $number) {
+                        $phone_numbers[] = new PhoneNumber([
+                            'label' => $csv_contact['Phone ' . $i . ' - Type'],
+                            'phone_number' => trim($number),
+                        ]);
+                    }
+                }
+            }
+
+            $emails = [];
+            foreach (range(1, 3) as $i) {
+                if (!empty($csv_contact['E-mail ' . $i . ' - Value'])) {
+                    $m_emails = explode(":::", $csv_contact['E-mail ' . $i . ' - Value']);
+                    foreach ($m_emails as $email) {
+                        $emails[] = new Email([
+                            'label' => $csv_contact['E-mail ' . $i . ' - Type'],
+                            'email' => trim($email),
+                        ]);
+                    }
+                }
+            }
+
+            if (count($phone_numbers) > 0) {
+                $contact->phone_numbers()->saveMany($phone_numbers);
+            }
+
+            if (count($emails) > 0) {
+                $contact->emails()->saveMany($emails);
+            }
+        }
+    }
+
     public function import(Request $request)
     {
         $file = $request->file('file');
@@ -29,65 +142,17 @@ class ContactsController extends Controller
         }
 
         $user = Auth::user();
-        $csv_array = csv_to_array($file->getRealPath());
+
+        $path = $file->getRealPath();
 
         if ($extension == 'csv') {
-            foreach ($csv_array as $csv_contact) {
-                $name = explode(" ", $csv_contact['Name']);
-                $contact = new Contact([
-                    'first_name' => $name[0],
-                    'last_name' => join(' ', array_slice($name, 1)),
-                ]);
-
-                if (!empty($csv_contact['Photo'])) {
-                    $contact->avatar = $csv_contact['Photo'];
-                }
-
-                if (!empty($csv_contact['Notes'])) {
-                    $contact->note = $csv_contact['Notes'];
-                }
-
-                if (!empty($csv_contact['Occupation'])) {
-                    $contact->job_title = $csv_contact['Occupation'];
-                }
-
-                $contact->user_id = $user->id;
-                $contact->save();
-
-                $phone_numbers = [];
-                foreach (range(1, 5) as $i) {
-                    if (!empty($csv_contact['Phone ' . $i . ' - Value'])) {
-                        $m_numbers = explode(':::', $csv_contact['Phone ' . $i . ' - Value']);
-                        foreach ($m_numbers as $number) {
-                            $phone_numbers[] = new PhoneNumber([
-                                'label' => $csv_contact['Phone ' . $i . ' - Type'],
-                                'phone_number' => trim($number),
-                            ]);
-                        }
-                    }
-                }
-
-                $emails = [];
-                foreach (range(1, 3) as $i) {
-                    if (!empty($csv_contact['E-mail ' . $i . ' - Value'])) {
-                        $m_emails = explode(":::", $csv_contact['E-mail ' . $i . ' - Value']);
-                        foreach ($m_emails as $email) {
-                            $emails[] = new Email([
-                                'label' => $csv_contact['E-mail ' . $i . ' - Type'],
-                                'email' => trim($email),
-                            ]);
-                        }
-                    }
-                }
-
-                if (count($phone_numbers) > 0) {
-                    $contact->phone_numbers()->saveMany($phone_numbers);
-                }
-
-                if (count($emails) > 0) {
-                    $contact->emails()->saveMany($emails);
-                }
-            }
+            $this->importCSV($path, $user->id);
+        } else if ($extension == 'vcf') {
+            $this->importVCF($path, $user->id);
+            // return response()->json([
+            //     'contacts' => $this->importVCF($path, $user->id),
+            //     'message' => 'Contacts imported',
+            // ], Response::HTTP_OK);
         }
 
         $per_page = 1000;
@@ -182,12 +247,30 @@ class ContactsController extends Controller
         $contacts = Contact::where('user_id', non_empty($request->id, $user->id))
             ->orderBy('first_name', 'asc')
             ->with(['phone_numbers:id,contact_id,label,country_code,phone_number', 'emails:id,contact_id,email,label'])
-            ->select(['id','first_name','last_name','avatar'])
+            ->select(['id', 'first_name', 'last_name', 'avatar'])
             ->paginate($per_page);
 
         return response()->json(['contacts' => $contacts], Response::HTTP_OK);
 
     }
+
+    public function getTrashed()
+    {
+        $per_page = 1000;
+        $user = Auth::user();
+        $contacts = Contact::onlyTrashed()
+            ->where('user_id', $user->id)
+            ->orderBy('first_name', 'asc')
+            ->with(['phone_numbers:id,contact_id,label,country_code,phone_number', 'emails:id,contact_id,email,label'])
+            ->select(['id', 'first_name', 'last_name', 'avatar'])
+            ->paginate($per_page);
+
+        return response()->json([
+            'contacts' => $contacts,
+        ], Response::HTTP_OK);
+
+    }
+
 
     public function select(Request $request)
     {
@@ -244,7 +327,6 @@ class ContactsController extends Controller
             'first_name' => 'required|max:16',
             'phone_numbers' => 'required|array|min:1',
             'emails.*.email' => 'required|email',
-            'phone_numbers.*.country_code' => 'required',
             'phone_numbers.*.phone_number' => 'required',
         ]);
 
@@ -308,38 +390,33 @@ class ContactsController extends Controller
         return response()->json(['contact' => $contact], Response::HTTP_OK);
     }
 
-    public function destroy(Request $request)
+    public function moveToTrash(Request $request)
     {
-        $user = Auth::user();
-        if ($request->id && $user->role != 'admin') {
-            return response()->json([
-                'message' => 'Permission denied.',
-            ], Response::HTTP_UNAUTHORIZED);
-        }
-
-        if ($request->id && !User::find($request->id)) {
-            return response()->json([
-                'message' => 'User not found',
-            ], Response::HTTP_NOT_FOUND);
-        }
-
-        $contact = Contact::where([
-            'id' => $request->contact_id,
-            'user_id' => non_empty($request->id, $user->id),
-        ])
-            ->select('id')
-            ->first();
-
-        if (!$contact) {
-            return response()->json([
-                'message' => 'Contact not found!',
-            ], Response::HTTP_NOT_FOUND);
-        }
-
-        $contact->delete();
-
+        Contact::whereIn('id', $request->ids)->delete();
         return response()->json([
-            'message' => 'Contact deleted.',
+            'message' => 'Contacts moved to trash.',
         ], Response::HTTP_OK);
+    }
+
+    public function restoreFromTrash(Request $request)
+    {
+        Contact::withTrashed()
+            ->whereIn('id', $request->ids)
+            ->restore();
+        return response()->json([
+            'message' => 'Contacts has been restored.',
+        ], Response::HTTP_OK);
+
+    }
+
+    public function deletePermanently(Request $request)
+    {
+        Contact::withTrashed()
+            ->whereIn('id', $request->ids)
+            ->forceDelete();
+        return response()->json([
+            'message' => 'Contacts permanently deleted.',
+        ], Response::HTTP_OK);
+
     }
 }
