@@ -6,6 +6,8 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Validator;
 
 class UsersController extends Controller
 {
@@ -70,6 +72,39 @@ class UsersController extends Controller
             'id' => $request->id,
             'request' => $request->all(),
             'message' => 'User deleted',
+        ], Response::HTTP_OK);
+    }
+
+    public function updateAvatar(Request $request)
+    {
+        $validation = Validator::make($request->all(), [
+            'avatar' => 'required|mimes:png,jpg,jpeg|max:3076',
+        ]);
+        if ($validation->fails()) {
+            return response()->json([
+                'errors' => $validation->errors(),
+                'message' => 'Please provide a valid file.',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $user = Auth::user();
+        if ($user->avatar != null) {
+            if (File::exists(public_path('storage/' . $user->avatar))) {
+                File::delete(public_path('storage/' . $user->avatar));
+            }
+        }
+        if ($request->file()) {
+            $file = $request->file('avatar');
+            $name = uniqid() . '.' . strtolower($file->getClientOriginalExtension());
+            $filePath = $file->storeAs('avatars', $name, 'public');
+
+            $user->avatar = $filePath;
+            $user->save();
+        }
+
+        return response()->json([
+            'user' => Auth::user(),
+            'message' => 'Avatar updated.',
         ], Response::HTTP_OK);
     }
 }

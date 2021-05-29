@@ -37,7 +37,9 @@ Route::group(['prefix' => 'v1'], function () {
 
         // Me
         Route::group(['prefix' => '/me'], function () {
+
             Route::get('/', [UsersController::class, 'select']);
+            Route::post('/avatar', [UsersController::class, 'updateAvatar']);
 
             // Contacts
             Route::group(['prefix' => '/contacts'], function () {
