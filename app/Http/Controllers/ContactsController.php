@@ -243,7 +243,7 @@ class ContactsController extends Controller
             ], Response::HTTP_NOT_FOUND);
         }
 
-        $per_page = 1000;
+        $per_page = 50;
         $contacts = Contact::where('user_id', non_empty($request->id, $user->id))
             ->orderBy('first_name', 'asc')
             ->with(['phone_numbers:id,contact_id,label,country_code,phone_number', 'emails:id,contact_id,email,label'])
