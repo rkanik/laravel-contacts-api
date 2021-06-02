@@ -243,14 +243,24 @@ class ContactsController extends Controller
             ], Response::HTTP_NOT_FOUND);
         }
 
-        $per_page = 50;
-        $contacts = Contact::where('user_id', non_empty($request->id, $user->id))
+        $query = queryWhere(
+            Contact::where('user_id', $user->id),
+            $request->query()
+        );
+
+        // $result = $query->get();
+
+        $per_page = isset($request->per_page) ? $request->per_page : 50;
+        $contacts = $query
             ->orderBy('first_name', 'asc')
-            ->with(['phone_numbers:id,contact_id,label,country_code,phone_number', 'emails:id,contact_id,email,label'])
-            ->select(['id', 'first_name', 'last_name', 'avatar'])
+            ->with(['phone_numbers', 'emails'])
+            // ->with(['phone_numbers:id,contact_id,label,country_code,phone_number', 'emails:id,contact_id,email,label'])
+            // ->select(['id', 'first_name', 'last_name', 'avatar'])
             ->paginate($per_page);
 
-        return response()->json(['contacts' => $contacts], Response::HTTP_OK);
+        return response()->json([
+            'contacts' => $contacts,
+        ], Response::HTTP_OK);
 
     }
 
@@ -270,7 +280,6 @@ class ContactsController extends Controller
         ], Response::HTTP_OK);
 
     }
-
 
     public function select(Request $request)
     {
@@ -324,8 +333,8 @@ class ContactsController extends Controller
 
         $validation = Validator::make($request->all(), [
             'last_name' => 'max:16',
-            'first_name' => 'required|max:16',
-            'phone_numbers' => 'required|array|min:1',
+            'first_name' => 'max:16',
+            'phone_numbers' => 'array|min:1',
             'emails.*.email' => 'required|email',
             'phone_numbers.*.phone_number' => 'required',
         ]);
@@ -349,6 +358,14 @@ class ContactsController extends Controller
                 'message' => 'Contact not found!',
             ], Response::HTTP_NOT_FOUND);
         }
+        // return response()->json([
+        //     'body' => $request->only(
+        //         'first_name', 'last_name',
+        //         'company', 'job_title',
+        //         'is_favorite', 'note'
+        //     ),
+        //     'message' => 'Contact not found!',
+        // ], Response::HTTP_OK);
 
         $contact->update(
             $request->only(
@@ -358,15 +375,17 @@ class ContactsController extends Controller
             )
         );
 
-        $contact->phone_numbers()->delete();
-        $contact->phone_numbers()->saveMany(
-            array_map(
-                function ($phone_number) {
-                    return new PhoneNumber($phone_number);
-                },
-                $request->phone_numbers
-            )
-        );
+        if ($request->phone_numbers) {
+            $contact->phone_numbers()->delete();
+            $contact->phone_numbers()->saveMany(
+                array_map(
+                    function ($phone_number) {
+                        return new PhoneNumber($phone_number);
+                    },
+                    $request->phone_numbers
+                )
+            );
+        }
 
         if ($request->emails) {
             $contact->emails()->delete();

@@ -1,5 +1,16 @@
 <?php
 
+function queryWhere($query, $query_params)
+{
+    if (empty($query_params['where'])) {
+        return $query;
+    }
+    foreach (json_decode($query_params['where']) as $key => $value) {
+        $query->where($key, $value);
+    }
+    return $query;
+}
+
 function getContactsFromVCF(string $path)
 {
     $vcf = fopen($path, 'r');
